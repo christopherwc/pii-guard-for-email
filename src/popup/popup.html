@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>PII Guard</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header class="pg-header">
+    <h1>PII Guard</h1>
+  </header>
+
+  <label class="pg-toggle-row pg-master">
+    <input type="checkbox" id="guardEnabled" />
+    <span>Scan drafts before sending</span>
+  </label>
+
+  <div class="pg-stat">
+    <span id="blockedCount">0</span>
+    <span class="pg-stat-label">sends blocked so far</span>
+  </div>
+
+  <h2 class="pg-section-title">Detection rules</h2>
+  <ul id="ruleList" class="pg-rule-list"></ul>
+
+  <footer class="pg-footer">
+    <button id="openOptions" class="pg-link-btn" type="button">Manage allowlist &amp; options</button>
+  </footer>
+
+  <script src="popup.js"></script>
+</body>
+</html>

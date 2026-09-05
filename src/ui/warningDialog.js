@@ -4,7 +4,7 @@
  * chrome.* APIs.
  */
 
-const SEVERITY_ORDER = { high: 0, medium: 1, low: 2 };
+const { SEVERITY_ORDER } = require('../detector/piiRules');
 
 function groupFindings(findings) {
   const byRule = new Map();

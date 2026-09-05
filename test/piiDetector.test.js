@@ -1,4 +1,4 @@
-const { scanText, redact } = require('../src/detector/piiDetector');
+const { scanText, redact, compileCustomRule } = require('../src/detector/piiDetector');
 
 describe('scanText', () => {
   test('returns clean for empty or PII-free text', () => {
@@ -79,6 +79,69 @@ describe('scanText', () => {
     expect(findings).toHaveLength(2);
     expect(findings[0].ruleId).toBe('email');
     expect(findings[1].ruleId).toBe('ssn');
+  });
+});
+
+describe('minSeverity threshold', () => {
+  const text = 'Email jane@example.com and SSN 219-09-9999 and call 415-555-0132';
+
+  test('defaults to blocking on any severity', () => {
+    const { findings } = scanText(text);
+    expect(findings.map((f) => f.ruleId).sort()).toEqual(['email', 'phone', 'ssn'].sort());
+  });
+
+  test('minSeverity "medium" drops low-severity findings like phone numbers', () => {
+    const { findings } = scanText(text, { minSeverity: 'medium' });
+    expect(findings.some((f) => f.ruleId === 'phone')).toBe(false);
+    expect(findings.some((f) => f.ruleId === 'ssn')).toBe(true);
+    expect(findings.some((f) => f.ruleId === 'email')).toBe(true);
+  });
+
+  test('minSeverity "high" keeps only high-severity findings like SSNs', () => {
+    const { findings } = scanText(text, { minSeverity: 'high' });
+    expect(findings).toHaveLength(1);
+    expect(findings[0].ruleId).toBe('ssn');
+  });
+});
+
+describe('custom rules', () => {
+  test('compileCustomRule builds a working rule from a valid pattern', () => {
+    const rule = compileCustomRule({ id: 'empId', label: 'Employee ID', pattern: 'EMP-\\d{6}', severity: 'high' });
+    expect(rule).not.toBeNull();
+    expect(rule.custom).toBe(true);
+  });
+
+  test('compileCustomRule returns null for an invalid regular expression', () => {
+    expect(compileCustomRule({ id: 'bad', label: 'Bad', pattern: '(unclosed' })).toBeNull();
+  });
+
+  test('scanText applies custom rules alongside built-in ones', () => {
+    const { findings } = scanText('My badge is EMP-482913, see you there.', {
+      customRules: [{ id: 'empId', label: 'Employee ID', pattern: 'EMP-\\d{6}', severity: 'high' }],
+    });
+    expect(findings.some((f) => f.ruleId === 'empId')).toBe(true);
+  });
+
+  test('an invalid custom rule is silently skipped rather than throwing', () => {
+    expect(() =>
+      scanText('hello world', { customRules: [{ id: 'bad', pattern: '(unclosed' }] })
+    ).not.toThrow();
+  });
+
+  test('custom rules run even when enabledRuleIds omits their id', () => {
+    const { findings } = scanText('EMP-482913', {
+      enabledRuleIds: ['ssn'],
+      customRules: [{ id: 'empId', label: 'Employee ID', pattern: 'EMP-\\d{6}', severity: 'high' }],
+    });
+    expect(findings.some((f) => f.ruleId === 'empId')).toBe(true);
+  });
+
+  test('custom rule severity is still subject to minSeverity filtering', () => {
+    const { findings } = scanText('EMP-482913', {
+      minSeverity: 'high',
+      customRules: [{ id: 'empId', label: 'Employee ID', pattern: 'EMP-\\d{6}', severity: 'low' }],
+    });
+    expect(findings).toHaveLength(0);
   });
 });
 

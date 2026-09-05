@@ -63,6 +63,28 @@ describe('gmailAdapter', () => {
     expect(text).toContain('219-09-9999');
   });
 
+  test('reads recipient addresses from chip "email" attributes', () => {
+    const { dialog } = buildComposeFixture(document, { body: 'hi' });
+    const chip1 = document.createElement('span');
+    chip1.setAttribute('email', 'alice@company.com');
+    const chip2 = document.createElement('span');
+    chip2.setAttribute('email', 'bob@company.com');
+    dialog.appendChild(chip1);
+    dialog.appendChild(chip2);
+
+    expect(gmailAdapter.getRecipients(dialog)).toEqual(['alice@company.com', 'bob@company.com']);
+  });
+
+  test('falls back to scanning text for recipients when no chips are present', () => {
+    const { dialog, bodyDiv } = buildComposeFixture(document, { body: 'hi' });
+    Object.defineProperty(dialog, 'innerText', {
+      value: `carol@company.com ${bodyDiv.innerText}`,
+      configurable: true,
+    });
+
+    expect(gmailAdapter.getRecipients(dialog)).toEqual(['carol@company.com']);
+  });
+
   afterEach(() => {
     document.body.innerHTML = '';
   });

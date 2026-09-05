@@ -16,6 +16,49 @@
     </section>
 
     <section class="opt-section">
+      <h2>Sensitivity</h2>
+      <p class="opt-help">Only block a send when the sensitive information found meets this severity.</p>
+      <select id="minSeverity" class="opt-select">
+        <option value="low">Any severity (most protective)</option>
+        <option value="medium">Medium and high severity only</option>
+        <option value="high">High severity only</option>
+      </select>
+    </section>
+
+    <section class="opt-section">
+      <h2>Live scan while typing</h2>
+      <p class="opt-help">
+        Show a running count of possible PII in the toolbar icon as you type,
+        before you even click Send.
+      </p>
+      <label class="opt-checkbox-row">
+        <input type="checkbox" id="liveScanEnabled" />
+        <span>Enable live scanning</span>
+      </label>
+    </section>
+
+    <section class="opt-section">
+      <h2>Custom rules</h2>
+      <p class="opt-help">
+        Add your own regular expressions to catch anything specific to your
+        organization (e.g. an internal case-ID format). Custom rules are
+        always active while PII Guard is on - remove one below to disable it.
+      </p>
+      <ul id="customRuleList" class="opt-custom-rule-list"></ul>
+      <div class="opt-custom-rule-form">
+        <input id="customRuleLabel" class="opt-input" type="text" placeholder="Label (e.g. Employee ID)" />
+        <input id="customRulePattern" class="opt-input" type="text" placeholder="Regular expression (e.g. EMP-\\d{6})" />
+        <select id="customRuleSeverity" class="opt-select">
+          <option value="high">High</option>
+          <option value="medium" selected>Medium</option>
+          <option value="low">Low</option>
+        </select>
+        <button id="addCustomRule" class="opt-btn" type="button">Add rule</button>
+      </div>
+      <p id="customRuleError" class="opt-error" hidden></p>
+    </section>
+
+    <section class="opt-section">
       <h2>Allowlist</h2>
       <p class="opt-help">
         Exact text that should never be flagged (e.g. your own email address or a
@@ -23,6 +66,17 @@
       </p>
       <textarea id="ignoreList" class="opt-textarea" rows="6"></textarea>
       <button id="saveIgnoreList" class="opt-btn" type="button">Save allowlist</button>
+    </section>
+
+    <section class="opt-section">
+      <h2>Trusted recipient domains</h2>
+      <p class="opt-help">
+        Skip scanning entirely when every recipient's email address is on one
+        of these domains (e.g. your own company). One domain per line, e.g.
+        <code>mycompany.com</code>. Leave empty to always scan.
+      </p>
+      <textarea id="trustedDomains" class="opt-textarea" rows="4"></textarea>
+      <button id="saveTrustedDomains" class="opt-btn" type="button">Save trusted domains</button>
     </section>
 
     <section class="opt-section">

@@ -1,4 +1,13 @@
-const { defaultSettings, normalizeSettings, loadSettings, saveSettings, enabledRuleIdsArray, STORAGE_KEY } = require('../src/settings');
+const {
+  defaultSettings,
+  normalizeSettings,
+  loadSettings,
+  saveSettings,
+  enabledRuleIdsArray,
+  buildScanOptions,
+  isRecipientListTrusted,
+  STORAGE_KEY,
+} = require('../src/settings');
 const { RULES } = require('../src/detector/piiRules');
 
 function fakeStorageArea(initial = {}) {
@@ -67,6 +76,52 @@ describe('enabledRuleIdsArray', () => {
     const ids = enabledRuleIdsArray(settings);
     expect(ids).not.toContain('phone');
     expect(ids).toContain('email');
+  });
+});
+
+describe('buildScanOptions', () => {
+  test('reflects enabled rules, ignore list, custom rules, and severity threshold', () => {
+    const settings = defaultSettings();
+    settings.enabledRuleIds.phone = false;
+    settings.ignoreList = ['me@company.com'];
+    settings.customRules = [{ id: 'x', label: 'X', pattern: 'X', severity: 'high' }];
+    settings.minSeverity = 'medium';
+
+    const options = buildScanOptions(settings);
+    expect(options.enabledRuleIds).not.toContain('phone');
+    expect(options.ignoreList).toEqual(['me@company.com']);
+    expect(options.customRules).toEqual(settings.customRules);
+    expect(options.minSeverity).toBe('medium');
+  });
+});
+
+describe('isRecipientListTrusted', () => {
+  test('is false when there are no recipients', () => {
+    expect(isRecipientListTrusted([], ['company.com'])).toBe(false);
+  });
+
+  test('is false when there are no trusted domains configured', () => {
+    expect(isRecipientListTrusted(['a@company.com'], [])).toBe(false);
+  });
+
+  test('is true when every recipient matches a trusted domain', () => {
+    expect(isRecipientListTrusted(['a@company.com', 'b@company.com'], ['company.com'])).toBe(true);
+  });
+
+  test('is true for a subdomain of a trusted domain', () => {
+    expect(isRecipientListTrusted(['a@eu.company.com'], ['company.com'])).toBe(true);
+  });
+
+  test('is false when even one recipient is outside the trusted domains', () => {
+    expect(isRecipientListTrusted(['a@company.com', 'b@gmail.com'], ['company.com'])).toBe(false);
+  });
+
+  test('domain matching is case-insensitive', () => {
+    expect(isRecipientListTrusted(['a@Company.COM'], ['company.com'])).toBe(true);
+  });
+
+  test('does not treat a lookalike domain as trusted (e.g. evilcompany.com vs company.com)', () => {
+    expect(isRecipientListTrusted(['a@evilcompany.com'], ['company.com'])).toBe(false);
   });
 });
 

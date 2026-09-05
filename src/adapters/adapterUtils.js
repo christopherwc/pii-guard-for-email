@@ -37,4 +37,17 @@ function getElementText(el) {
   return el.innerText !== undefined ? el.innerText : el.textContent || '';
 }
 
-module.exports = { accessibleNameStartsWith, findByAccessibleName, getElementText };
+const EMAIL_PATTERN = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;
+
+/** Extracts every email address found in a blob of text (e.g. a recipient field). */
+function extractEmailsFromText(text) {
+  if (!text) return [];
+  return text.match(new RegExp(EMAIL_PATTERN.source, EMAIL_PATTERN.flags)) || [];
+}
+
+module.exports = {
+  accessibleNameStartsWith,
+  findByAccessibleName,
+  getElementText,
+  extractEmailsFromText,
+};

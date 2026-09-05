@@ -25,6 +25,17 @@ server. See [How it works](#how-it-works) for details.
 - Blocks the send with a modal listing what was found (values are masked,
   e.g. `••••1111`) and lets you either go back and edit, or explicitly
   **Send anyway**.
+- **Live scanning while you type**: the toolbar icon shows a running count of
+  possible PII in the draft you're currently editing, updated ~400ms after
+  you stop typing - so you see the risk before you even reach for Send.
+- **Custom rules**: add your own regular expressions from the options page
+  (e.g. an internal employee-ID or case-number format) alongside the
+  built-in categories.
+- **Sensitivity threshold**: choose whether *any* match blocks the send, or
+  only medium/high (or high-only) severity findings.
+- **Trusted recipient domains**: skip scanning entirely when every recipient
+  on the draft is on an allow-listed domain (e.g. your own company), so
+  internal threads aren't interrupted.
 - Per-rule toggles and an allowlist for text you never want flagged (e.g.
   your own email address), managed from the popup and options page.
 - No network requests, no analytics, no accounts.
@@ -112,10 +123,13 @@ Web Store API upload endpoint expects.
   proceeds normally, otherwise the click is cancelled and a blocking dialog
   (`src/ui/warningDialog.js`) is shown. Choosing "Send anyway" replays the
   click, bypassing the guard exactly once for that button.
-- **Background service worker**: sets default settings on install and keeps
-  a running count of blocked sends (shown in the toolbar badge).
+- **Background service worker**: sets default settings on install, tracks a
+  running count of blocked sends (shown in the options page), and drives the
+  toolbar badge from live-scan messages sent by the content script.
 - **Popup / options pages**: manage the master on/off switch, per-rule
-  toggles, and the allowlist, all persisted with `chrome.storage.sync`.
+  toggles, the sensitivity threshold, live-scan toggle, custom rules,
+  allowlist, and trusted recipient domains, all persisted with
+  `chrome.storage.sync`.
 
 ## Known limitations
 
@@ -130,6 +144,14 @@ Web Store API upload endpoint expects.
 - Automated tests simulate Gmail/Outlook markup with jsdom fixtures; they do
   not drive a real, logged-in Gmail/Outlook session (that would risk actually
   sending mail and isn't something CI can safely do).
+- Custom rules accept any regular expression you provide. A pathological
+  pattern (catastrophic backtracking) could slow down scanning on long
+  drafts - keep custom patterns simple and specific.
+- Recipient extraction (used for the trusted-domains feature) relies on
+  attributes Gmail/Outlook happen to expose today (`email` on Gmail chips,
+  `title` on Outlook personas) and falls back to scanning visible text if
+  those aren't present; it can miss recipients in an unusual layout, in
+  which case the draft is scanned as normal rather than silently skipped.
 
 ## Privacy
 

@@ -1,4 +1,4 @@
-const { findByAccessibleName, getElementText } = require('./adapterUtils');
+const { findByAccessibleName, getElementText, extractEmailsFromText } = require('./adapterUtils');
 
 /**
  * Adapter for Outlook on the web (outlook.office.com, outlook.live.com,
@@ -28,6 +28,22 @@ function findSendButton(container) {
   return candidates[0] || null;
 }
 
+/**
+ * Returns the email addresses of every recipient (To/Cc/Bcc) in a compose
+ * container. Outlook recipient "personas" commonly carry the address in a
+ * `title` attribute (as plain "name@domain.com" or "Name <name@domain.com>");
+ * if none are found this falls back to scanning the container's text.
+ */
+function getRecipients(container) {
+  const titledEls = Array.from(container.querySelectorAll('[title]'));
+  const emails = [];
+  for (const el of titledEls) {
+    emails.push(...extractEmailsFromText(el.getAttribute('title')));
+  }
+  if (emails.length) return emails;
+  return extractEmailsFromText(getElementText(container));
+}
+
 function getComposeText(container) {
   const subjectEl = container.querySelector(SUBJECT_SELECTOR);
   const bodyEl = container.querySelector(BODY_SELECTOR);
@@ -43,4 +59,5 @@ module.exports = {
   findComposeContainer,
   findSendButton,
   getComposeText,
+  getRecipients,
 };

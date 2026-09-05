@@ -62,6 +62,28 @@ describe('outlookAdapter', () => {
     expect(text).toContain('4111 1111 1111 1111');
   });
 
+  test('reads recipient addresses from "title" attributes on persona chips', () => {
+    const { dialog } = buildComposeFixture(document, { body: 'hi' });
+    const persona1 = document.createElement('div');
+    persona1.setAttribute('title', 'Alice <alice@company.com>');
+    const persona2 = document.createElement('div');
+    persona2.setAttribute('title', 'bob@company.com');
+    dialog.appendChild(persona1);
+    dialog.appendChild(persona2);
+
+    expect(outlookAdapter.getRecipients(dialog)).toEqual(['alice@company.com', 'bob@company.com']);
+  });
+
+  test('falls back to scanning text for recipients when no titled chips are present', () => {
+    const { dialog, bodyDiv } = buildComposeFixture(document, { body: 'hi' });
+    Object.defineProperty(dialog, 'innerText', {
+      value: `carol@company.com ${bodyDiv.innerText}`,
+      configurable: true,
+    });
+
+    expect(outlookAdapter.getRecipients(dialog)).toEqual(['carol@company.com']);
+  });
+
   afterEach(() => {
     document.body.innerHTML = '';
   });

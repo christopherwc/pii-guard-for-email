@@ -1,4 +1,4 @@
-const { findByAccessibleName, getElementText } = require('./adapterUtils');
+const { findByAccessibleName, getElementText, extractEmailsFromText } = require('./adapterUtils');
 
 /**
  * Adapter for Gmail's web UI (mail.google.com).
@@ -31,6 +31,22 @@ function findSendButton(container) {
   return candidates[0] || null;
 }
 
+const RECIPIENT_CHIP_SELECTOR = 'span[email]';
+
+/**
+ * Returns the email addresses of every recipient (To/Cc/Bcc) in a compose
+ * container. Gmail tags each recipient "chip" with a stable `email`
+ * attribute; if none are found (e.g. the field still holds raw typed text)
+ * this falls back to scanning the container's text for email addresses.
+ */
+function getRecipients(container) {
+  const chips = Array.from(container.querySelectorAll(RECIPIENT_CHIP_SELECTOR));
+  if (chips.length) {
+    return chips.map((c) => c.getAttribute('email')).filter(Boolean);
+  }
+  return extractEmailsFromText(getElementText(container));
+}
+
 /** Concatenates subject + body text for a compose container so both get scanned. */
 function getComposeText(container) {
   const subjectEl = container.querySelector(SUBJECT_SELECTOR);
@@ -47,4 +63,5 @@ module.exports = {
   findComposeContainer,
   findSendButton,
   getComposeText,
+  getRecipients,
 };

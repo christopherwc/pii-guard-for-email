@@ -59,7 +59,39 @@ npm install       # install dependencies
 npm test          # run the Jest test suite
 npm run lint      # run ESLint
 npm run build     # bundle src/ into dist/ (the loadable extension)
+npm run package   # zip dist/ into pii-guard-for-email-<version>.zip
 ```
+
+## CI/CD
+
+Two GitHub Actions workflows live in `.github/workflows/`:
+
+- **`ci.yml`** — runs on every push and pull request to `main`. Installs
+  dependencies, lints, runs the full test suite on Node 18.x and 20.x, builds
+  the extension, and uploads `dist/` as a workflow artifact so a build from
+  any commit can be downloaded and loaded unpacked without checking out the
+  repo.
+- **`release.yml`** — runs when a tag matching `v*.*.*` is pushed. It repeats
+  lint/test/build, fails fast if the tag's version doesn't match
+  `manifest.json`, packages `dist/` into a zip, and publishes a GitHub
+  Release with that zip attached.
+
+To cut a release:
+
+```bash
+# bump "version" in both manifest.json and package.json first, then:
+git add manifest.json package.json
+git commit -m "Bump version to x.y.z"
+git tag vx.y.z
+git push origin main --tags
+```
+
+Chrome Web Store auto-publishing isn't wired up yet (there's no store
+listing or API credentials to publish with). Once one exists, add
+`CHROME_EXTENSION_ID`, `CHROME_CLIENT_ID`, `CHROME_CLIENT_SECRET`, and
+`CHROME_REFRESH_TOKEN` as repository secrets and add a publish step to
+`release.yml` — the packaged zip it already produces is exactly what the
+Web Store API upload endpoint expects.
 
 ## How it works
 

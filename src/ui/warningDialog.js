@@ -10,7 +10,7 @@ function groupFindings(findings) {
   const byRule = new Map();
   for (const f of findings) {
     if (!byRule.has(f.ruleId)) {
-      byRule.set(f.ruleId, { label: f.label, severity: f.severity, count: 0, samples: [] });
+      byRule.set(f.ruleId, { ruleId: f.ruleId, label: f.label, severity: f.severity, count: 0, samples: [] });
     }
     const g = byRule.get(f.ruleId);
     g.count += 1;
@@ -21,12 +21,33 @@ function groupFindings(findings) {
   );
 }
 
+/** Rules whose values are numbers identified by their last 4 digits. */
+const LAST4_DIGIT_RULES = new Set(['creditCard', 'ssn', 'bankAccount']);
+/** Rules whose values are credentials: only the non-secret prefix and last 4 chars are shown. */
+const SECRET_RULES = new Set(['awsKey', 'apiKey']);
+/** Well-known, non-secret token prefixes, kept visible so the user can tell which key it is. */
+const SECRET_PREFIX = /^(?:AKIA|ASIA|(?:sk|pk|rk)_(?:live|test)_|sk-|ghp_)/;
+
+/**
+ * Masks a matched value for display in the dialog, so sensitive data isn't
+ * shown in full (e.g. while screen-sharing). Enough is kept for the user to
+ * find the match in their draft.
+ */
 function maskSample(sample, ruleId) {
-  if (ruleId === 'creditCard' || ruleId === 'ssn' || ruleId === 'bankAccount') {
+  if (LAST4_DIGIT_RULES.has(ruleId)) {
     const digitsOnly = sample.replace(/\D/g, '');
     if (digitsOnly.length >= 4) {
       return `••••${digitsOnly.slice(-4)}`;
     }
+  }
+  if (SECRET_RULES.has(ruleId)) {
+    const prefix = (sample.match(SECRET_PREFIX) || [''])[0];
+    const secret = sample.slice(prefix.length);
+    return secret.length > 8 ? `${prefix}••••${secret.slice(-4)}` : `${prefix}••••`;
+  }
+  if (ruleId === 'passport') {
+    // Keep the "passport no:" lead-in, mask the document number itself.
+    return sample.replace(/[A-Z0-9]+$/i, (id) => `••••${id.slice(-4)}`);
   }
   return sample;
 }

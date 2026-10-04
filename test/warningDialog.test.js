@@ -28,8 +28,42 @@ describe('maskSample', () => {
     expect(maskSample('4111111111111111', 'creditCard')).toBe('••••1111');
   });
 
+  test('masks AWS and API keys, keeping only the known prefix and last 4 characters', () => {
+    expect(maskSample('AKIAIOSFODNN7EXAMPLE', 'awsKey')).toBe('AKIA••••MPLE');
+    // Built at runtime so no key-shaped literal is committed (GitHub push protection flags those).
+    const fakeStripeKey = ['sk', 'live', 'FAKEfakeFAKEfake1234'].join('_');
+    expect(maskSample(fakeStripeKey, 'apiKey')).toBe('sk_live_••••1234');
+    expect(maskSample('ghp_abcdefghijklmnopqrstuvwxyz0123456789', 'apiKey')).toBe('ghp_••••6789');
+    expect(maskSample('sk-abcdefghijklmnopqrstuvwx', 'apiKey')).toBe('sk-••••uvwx');
+  });
+
+  test('never reveals more than the prefix of a short secret', () => {
+    expect(maskSample('sk-abcdefgh', 'apiKey')).toBe('sk-••••');
+  });
+
+  test('masks the passport number but keeps its label', () => {
+    expect(maskSample('passport no: X1234567', 'passport')).toBe('passport no: ••••4567');
+    expect(maskSample('Passport # 123456789', 'passport')).toBe('Passport # ••••6789');
+  });
+
   test('leaves non-numeric rule samples untouched', () => {
     expect(maskSample('jane@example.com', 'email')).toBe('jane@example.com');
+  });
+
+  test('the dialog shows masked values, never the full sensitive number', () => {
+    const overlay = createWarningDialog(document, [
+      { ruleId: 'ssn', label: 'Social Security Numbers', severity: 'high', match: '219-09-9999', index: 0 },
+      { ruleId: 'creditCard', label: 'Credit card numbers', severity: 'high', match: '4111 1111 1111 1111', index: 20 },
+      { ruleId: 'awsKey', label: 'AWS access keys', severity: 'high', match: 'AKIAIOSFODNN7EXAMPLE', index: 50 },
+    ]);
+    const text = overlay.textContent;
+    expect(text).toContain('••••9999');
+    expect(text).toContain('••••1111');
+    expect(text).not.toContain('219-09-9999');
+    expect(text).not.toContain('4111 1111 1111 1111');
+    expect(text).toContain('AKIA••••MPLE');
+    expect(text).not.toContain('AKIAIOSFODNN7EXAMPLE');
+    overlay.remove();
   });
 });
 

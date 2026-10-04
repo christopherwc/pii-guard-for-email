@@ -31,6 +31,19 @@ describe('maskSample', () => {
   test('leaves non-numeric rule samples untouched', () => {
     expect(maskSample('jane@example.com', 'email')).toBe('jane@example.com');
   });
+
+  test('the dialog shows masked values, never the full sensitive number', () => {
+    const overlay = createWarningDialog(document, [
+      { ruleId: 'ssn', label: 'Social Security Numbers', severity: 'high', match: '219-09-9999', index: 0 },
+      { ruleId: 'creditCard', label: 'Credit card numbers', severity: 'high', match: '4111 1111 1111 1111', index: 20 },
+    ]);
+    const text = overlay.textContent;
+    expect(text).toContain('••••9999');
+    expect(text).toContain('••••1111');
+    expect(text).not.toContain('219-09-9999');
+    expect(text).not.toContain('4111 1111 1111 1111');
+    overlay.remove();
+  });
 });
 
 describe('createWarningDialog', () => {

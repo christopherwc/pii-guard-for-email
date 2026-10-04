@@ -10,7 +10,7 @@ function groupFindings(findings) {
   const byRule = new Map();
   for (const f of findings) {
     if (!byRule.has(f.ruleId)) {
-      byRule.set(f.ruleId, { label: f.label, severity: f.severity, count: 0, samples: [] });
+      byRule.set(f.ruleId, { ruleId: f.ruleId, label: f.label, severity: f.severity, count: 0, samples: [] });
     }
     const g = byRule.get(f.ruleId);
     g.count += 1;

@@ -1,4 +1,4 @@
-const { scanText, redact, compileCustomRule } = require('../src/detector/piiDetector');
+const { scanText, scanDraft, redact, compileCustomRule } = require('../src/detector/piiDetector');
 const { luhnCheck } = require('../src/detector/piiRules');
 
 describe('scanText', () => {
@@ -198,6 +198,50 @@ describe('custom rules', () => {
       customRules: [{ id: 'empId', label: 'Employee ID', pattern: 'EMP-\\d{6}', severity: 'low' }],
     });
     expect(findings).toHaveLength(0);
+  });
+});
+
+describe('scanDraft', () => {
+  const ruleIds = (result) => result.findings.map((f) => f.ruleId);
+
+  test('does not flag emails or phone numbers in quoted text or signatures', () => {
+    const result = scanDraft({
+      authored: 'Thanks, sounds good.',
+      quoted: 'Jane Doe | jane@example.com | (415) 555-0132\nOn Mon, Bob <bob@example.com> wrote:',
+    });
+    expect(result.clean).toBe(true);
+  });
+
+  test('still flags emails and phone numbers the user wrote', () => {
+    const result = scanDraft({
+      authored: 'Call carol at 415-555-0132 or carol@example.com',
+      quoted: 'Jane Doe | jane@example.com',
+    });
+    expect(ruleIds(result).sort()).toEqual(['email', 'phone']);
+    expect(result.findings.every((f) => !f.quoted)).toBe(true);
+  });
+
+  test('still flags high-risk PII inside quoted text, e.g. a forwarded SSN', () => {
+    const authored = 'FYI, see below';
+    const result = scanDraft({ authored, quoted: '---------- Forwarded message ---------\nSSN 219-09-9999' });
+
+    expect(ruleIds(result)).toEqual(['ssn']);
+    expect(result.findings[0].quoted).toBe(true);
+    expect(result.findings[0].index).toBeGreaterThan(authored.length);
+  });
+
+  test('respects disabled rules and still runs custom rules in quoted text', () => {
+    const quoted = 'SSN 219-09-9999, case EMP-123456';
+    const options = {
+      enabledRuleIds: ['email'],
+      customRules: [{ id: 'emp', label: 'Employee ID', pattern: 'EMP-\\d{6}', severity: 'high' }],
+    };
+    expect(ruleIds(scanDraft({ authored: '', quoted }, options))).toEqual(['emp']);
+  });
+
+  test('with no quoted part it behaves exactly like scanText', () => {
+    const authored = 'mail jane@example.com, ssn 219-09-9999';
+    expect(scanDraft({ authored, quoted: '' })).toEqual(scanText(authored));
   });
 });
 

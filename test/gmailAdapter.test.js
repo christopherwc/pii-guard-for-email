@@ -58,7 +58,7 @@ describe('gmailAdapter', () => {
       subject: 'Contract details',
       body: 'my ssn is 219-09-9999',
     });
-    const text = gmailAdapter.getComposeText(dialog);
+    const text = gmailAdapter.getComposeParts(dialog).authored;
     expect(text).toContain('Contract details');
     expect(text).toContain('219-09-9999');
   });
@@ -160,5 +160,58 @@ describe('gmailAdapter in a non-English UI', () => {
     dialog.insertBefore(discard, sendBtn);
 
     expect(gmailAdapter.findSendButton(dialog)).toBe(sendBtn);
+  });
+});
+
+describe('gmailAdapter.getComposeParts', () => {
+  /** Sets innerText, which jsdom doesn't compute, on an element. */
+  const setText = (el, text) => Object.defineProperty(el, 'innerText', { value: text, configurable: true });
+
+  /** Builds a reply body: authored text, signature, then the quoted earlier message. */
+  function buildReply({ authored, signature, quote }) {
+    const { dialog, bodyDiv } = buildComposeFixture(document, { subject: 'Re: plans' });
+    const sig = document.createElement('div');
+    sig.className = 'gmail_signature';
+    sig.setAttribute('data-smartmail', 'gmail_signature');
+    setText(sig, signature);
+    const quoteDiv = document.createElement('div');
+    quoteDiv.className = 'gmail_quote';
+    const nested = document.createElement('blockquote');
+    nested.className = 'gmail_quote';
+    setText(nested, quote.split('\n').slice(1).join('\n'));
+    quoteDiv.appendChild(nested);
+    setText(quoteDiv, quote);
+    bodyDiv.append(sig, quoteDiv);
+    setText(bodyDiv, `${authored}\n\n${signature}\n\n${quote}`);
+    return dialog;
+  }
+
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  test('separates the signature and quoted message from what the user wrote', () => {
+    const dialog = buildReply({
+      authored: 'Sounds good, see you then.',
+      signature: 'Jane Doe\njane@example.com',
+      quote: 'On Mon, Bob <bob@example.com> wrote:\nLunch on Friday?',
+    });
+
+    const { authored, quoted } = gmailAdapter.getComposeParts(dialog);
+    expect(authored).toContain('Re: plans');
+    expect(authored).toContain('Sounds good, see you then.');
+    expect(authored).not.toContain('jane@example.com');
+    expect(authored).not.toContain('bob@example.com');
+    expect(quoted).toBe('Jane Doe\njane@example.com\nOn Mon, Bob <bob@example.com> wrote:\nLunch on Friday?');
+  });
+
+  test('treats everything as authored when quoted text cannot be located in the body', () => {
+    const { dialog, bodyDiv } = buildComposeFixture(document, { body: 'hello' });
+    const sig = document.createElement('div');
+    sig.className = 'gmail_signature';
+    setText(sig, 'text that is not in the body');
+    bodyDiv.appendChild(sig);
+
+    expect(gmailAdapter.getComposeParts(dialog)).toEqual({ authored: '\nhello', quoted: '' });
   });
 });

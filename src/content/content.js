@@ -1,6 +1,6 @@
 const gmailAdapter = require('../adapters/gmailAdapter');
 const outlookAdapter = require('../adapters/outlookAdapter');
-const { scanText } = require('../detector/piiDetector');
+const { scanDraft } = require('../detector/piiDetector');
 const { createWarningDialog } = require('../ui/warningDialog');
 const { loadSettings, buildScanOptions, isRecipientListTrusted } = require('../settings');
 
@@ -46,8 +46,8 @@ function getBlockingFindings(adapter, composeContainer) {
   if (!currentSettings || !currentSettings.guardEnabled) return null;
   if (isFullyTrustedRecipients(adapter, composeContainer)) return null;
 
-  const text = adapter.getComposeText(composeContainer);
-  const { clean, findings } = scanText(text, buildScanOptions(currentSettings));
+  const parts = adapter.getComposeParts(composeContainer);
+  const { clean, findings } = scanDraft(parts, buildScanOptions(currentSettings));
   return clean ? null : findings;
 }
 
@@ -214,8 +214,8 @@ function scheduleLiveScan(bodyEl, adapter, composeContainer) {
     } else if (isFullyTrustedRecipients(adapter, composeContainer)) {
       lastLiveCount = 0;
     } else {
-      const text = adapter.getComposeText(composeContainer);
-      lastLiveCount = scanText(text, buildScanOptions(currentSettings)).findings.length;
+      const parts = adapter.getComposeParts(composeContainer);
+      lastLiveCount = scanDraft(parts, buildScanOptions(currentSettings)).findings.length;
     }
     reportTabStatus();
   }, LIVE_SCAN_DEBOUNCE_MS);

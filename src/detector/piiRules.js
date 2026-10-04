@@ -18,6 +18,27 @@ function luhnCheck(digits) {
   return sum % 10 === 0;
 }
 
+/**
+ * Issuer prefixes (IINs) and lengths of the major card networks. Luhn alone
+ * passes ~10% of random numbers, so order, tracking and account numbers were
+ * often flagged as cards; requiring a real network prefix + length rules
+ * out most of them (nothing issues cards starting with 0, 1, 7, 8 or 9).
+ */
+const CARD_NETWORK_PATTERNS = [
+  /^4(?:\d{12}|\d{15}|\d{18})$/, // Visa: 13, 16 or 19 digits
+  /^(?:5[1-5]\d{2}|222[1-9]|22[3-9]\d|2[3-6]\d{2}|27[01]\d|2720)\d{12}$/, // Mastercard: 16
+  /^3[47]\d{13}$/, // American Express: 15
+  /^(?:6011|64[4-9]\d|65\d{2})\d{12,15}$/, // Discover: 16-19
+  /^62\d{14,17}$/, // UnionPay: 16-19
+  /^35(?:2[89]|[3-8]\d)\d{12,15}$/, // JCB: 16-19
+  /^3(?:0[0-5]|[689]\d)\d{11,16}$/, // Diners Club: 14-19
+  /^(?:5[06-8]|6\d)\d{10,17}$/, // Maestro: 12-19
+];
+
+function isKnownCardNetwork(digits) {
+  return CARD_NETWORK_PATTERNS.some((pattern) => pattern.test(digits));
+}
+
 const RULES = [
   {
     id: 'email',
@@ -39,7 +60,7 @@ const RULES = [
     validate: (match) => {
       const digits = match.replace(/[ -]/g, '');
       if (digits.length < 13 || digits.length > 19) return false;
-      return luhnCheck(digits);
+      return isKnownCardNetwork(digits) && luhnCheck(digits);
     },
   },
   {
@@ -91,4 +112,4 @@ const RULES = [
 
 const SEVERITY_ORDER = { high: 0, medium: 1, low: 2 };
 
-module.exports = { RULES, luhnCheck, SEVERITY_ORDER };
+module.exports = { RULES, luhnCheck, isKnownCardNetwork, SEVERITY_ORDER };

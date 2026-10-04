@@ -1,4 +1,5 @@
 const { scanText, redact, compileCustomRule } = require('../src/detector/piiDetector');
+const { luhnCheck } = require('../src/detector/piiRules');
 
 describe('scanText', () => {
   test('returns clean for empty or PII-free text', () => {
@@ -34,6 +35,42 @@ describe('scanText', () => {
   test('rejects a 16-digit number that fails the Luhn check', () => {
     const { findings } = scanText('Number: 1234 5678 9012 3456');
     expect(findings.some((f) => f.ruleId === 'creditCard')).toBe(false);
+  });
+
+  test('detects published test numbers from every major card network', () => {
+    const cards = [
+      '4111 1111 1111 1111', // Visa
+      '5555 5555 5555 4444', // Mastercard
+      '2223 0031 2200 3222', // Mastercard 2-series
+      '3782 822463 10005', // American Express
+      '6011 1111 1111 1117', // Discover
+      '3530 1113 3330 0000', // JCB
+      '3056 9309 0259 04', // Diners Club
+      '6200 0000 0000 0005', // UnionPay
+    ];
+    for (const card of cards) {
+      expect(scanText(`Card: ${card}`).findings.map((f) => f.ruleId)).toContain('creditCard');
+    }
+  });
+
+  test('ignores Luhn-valid numbers that no card network issues, like order or tracking numbers', () => {
+    /** Appends the digit that makes `partial` pass the Luhn check. */
+    const withLuhnDigit = (partial) => {
+      for (let d = 0; d <= 9; d++) {
+        if (luhnCheck(`${partial}${d}`)) return `${partial}${d}`;
+      }
+      throw new Error('unreachable');
+    };
+    const notCards = [
+      withLuhnDigit('100234567890123'), // 16 digits starting with 1
+      withLuhnDigit('940011189922310'), // USPS-style, starts with 9
+      withLuhnDigit('70000000000000'), // starts with 7
+      withLuhnDigit('371449635398431'), // Amex prefix but 16 digits (Amex is 15)
+    ];
+    for (const number of notCards) {
+      expect(luhnCheck(number)).toBe(true);
+      expect(scanText(`Order #${number}`).findings.map((f) => f.ruleId)).not.toContain('creditCard');
+    }
   });
 
   test('detects US phone numbers in common formats', () => {

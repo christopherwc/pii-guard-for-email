@@ -39,6 +39,12 @@ server. See [How it works](#how-it-works) for details.
   internal threads aren't interrupted.
 - Per-rule toggles and an allowlist for text you never want flagged (e.g.
   your own email address), managed from the popup and options page.
+- **Works in common UI languages** (best-effort): the Send button and
+  Outlook subject field are recognized in English, German, French, Spanish,
+  Portuguese, Italian, Dutch, Swedish, Danish, Norwegian, Polish, Japanese,
+  Chinese and Korean. If the Send button on an open draft can't be found,
+  the toolbar icon shows an orange **!** (hover it for details) so an
+  unguarded draft never goes unnoticed.
 - No network requests, no analytics, no accounts.
 
 ## Install (load unpacked, for now)
@@ -127,8 +133,9 @@ Web Store API upload endpoint expects.
   anyway" clicks the Send button, bypassing the guard exactly once for that
   button.
 - **Background service worker**: sets default settings on install, tracks a
-  running count of blocked sends (shown in the options page), and drives the
-  toolbar badge from live-scan messages sent by the content script.
+  running count of blocked sends (shown in the options page), and drives each
+  tab's toolbar badge from status messages sent by that tab's content script
+  (live PII count, or **!** when a draft's Send button can't be found).
 - **Popup / options pages**: manage the master on/off switch, per-rule
   toggles, the sensitivity threshold, live-scan toggle, custom rules,
   allowlist, and trusted recipient domains, all persisted with
@@ -141,6 +148,11 @@ Web Store API upload endpoint expects.
   flag things that only look like PII (a 16-digit tracking number that
   happens to pass the credit card checksum, for instance). Use the allowlist
   for known-safe recurring text.
+- Localized labels (`src/adapters/localeLabels.js`) are common translations,
+  not strings verified against every Gmail/Outlook locale. In an uncovered
+  language the toolbar shows **!**: drafts there aren't guarded until a
+  label is added. Keyboard sends are still checked, but the warning can't
+  offer "Send anyway" without a known Send button.
 - Gmail and Outlook frequently change their DOM. The adapters target stable
   accessibility attributes to minimize breakage, but a future redesign could
   still require adapter updates.

@@ -56,7 +56,9 @@ function maskSample(sample, ruleId) {
  * @param {Document} doc
  * @param {Array} findings - output of piiDetector.scanText().findings
  * @param {Object} callbacks
- * @param {Function} callbacks.onSendAnyway
+ * @param {Function} [callbacks.onSendAnyway] - omit when there is no Send
+ *        button to click (e.g. it couldn't be found); the "Send anyway"
+ *        button is then replaced by a note explaining how to send.
  * @param {Function} callbacks.onEditDraft
  * @returns {HTMLElement} the overlay element, already appended to doc.body
  */
@@ -106,17 +108,25 @@ function createWarningDialog(doc, findings, callbacks = {}) {
     if (callbacks.onEditDraft) callbacks.onEditDraft();
   });
 
-  const sendBtn = doc.createElement('button');
-  sendBtn.type = 'button';
-  sendBtn.className = 'pii-guard-btn pii-guard-btn-danger';
-  sendBtn.textContent = 'Send anyway';
-  sendBtn.addEventListener('click', () => {
-    overlay.remove();
-    if (callbacks.onSendAnyway) callbacks.onSendAnyway();
-  });
-
   actions.appendChild(editBtn);
-  actions.appendChild(sendBtn);
+
+  if (callbacks.onSendAnyway) {
+    const sendBtn = doc.createElement('button');
+    sendBtn.type = 'button';
+    sendBtn.className = 'pii-guard-btn pii-guard-btn-danger';
+    sendBtn.textContent = 'Send anyway';
+    sendBtn.addEventListener('click', () => {
+      overlay.remove();
+      callbacks.onSendAnyway();
+    });
+    actions.appendChild(sendBtn);
+  } else {
+    const note = doc.createElement('p');
+    note.className = 'pii-guard-note';
+    note.textContent = "PII Guard couldn't find this draft's Send button. To send anyway, close this and click Send.";
+    modal.appendChild(note);
+  }
+
   modal.appendChild(actions);
 
   overlay.appendChild(modal);

@@ -142,3 +142,57 @@ describe('outlookAdapter.isSendShortcut', () => {
     expect(outlookAdapter.isSendShortcut(key({ key: 'Enter', ctrlKey: true, isComposing: true }))).toBe(false);
   });
 });
+
+describe('outlookAdapter in a non-English UI', () => {
+  function buildGermanCompose({ subject, body }) {
+    const dialog = document.createElement('div');
+    dialog.setAttribute('role', 'dialog');
+    const subjectInput = document.createElement('input');
+    subjectInput.setAttribute('aria-label', 'Betreff hinzufügen');
+    subjectInput.value = subject;
+    dialog.appendChild(subjectInput);
+    const bodyDiv = document.createElement('div');
+    bodyDiv.setAttribute('role', 'textbox');
+    bodyDiv.setAttribute('contenteditable', 'true');
+    Object.defineProperty(bodyDiv, 'innerText', { value: body, configurable: true });
+    dialog.appendChild(bodyDiv);
+    const sendBtn = document.createElement('button');
+    sendBtn.setAttribute('aria-label', 'Senden');
+    dialog.appendChild(sendBtn);
+    document.body.appendChild(dialog);
+    return { dialog, sendBtn };
+  }
+
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  test('scans a localized subject field and never treats it as a recipient', () => {
+    const { dialog } = buildGermanCompose({ subject: 'SVN 219-09-9999', body: 'Hallo' });
+
+    expect(outlookAdapter.getComposeText(dialog)).toContain('219-09-9999');
+    expect(outlookAdapter.getRecipients(dialog)).toEqual([]);
+  });
+
+  test('finds a localized Send button', () => {
+    const { dialog, sendBtn } = buildGermanCompose({ subject: '', body: 'Hallo' });
+    expect(outlookAdapter.findSendButton(dialog)).toBe(sendBtn);
+  });
+
+  test.each([
+    ['Envoyer', 'Ajouter un objet'],
+    ['Enviar', 'Agregar un asunto'],
+    ['送信', '件名を追加'],
+  ])('matches Send "%s" and subject "%s"', (sendLabel, subjectLabel) => {
+    const dialog = document.createElement('div');
+    const subjectInput = document.createElement('input');
+    subjectInput.setAttribute('aria-label', subjectLabel);
+    subjectInput.value = 'topic';
+    const sendBtn = document.createElement('button');
+    sendBtn.setAttribute('aria-label', sendLabel);
+    dialog.append(subjectInput, sendBtn);
+
+    expect(outlookAdapter.findSendButton(dialog)).toBe(sendBtn);
+    expect(outlookAdapter.getComposeText(dialog)).toContain('topic');
+  });
+});

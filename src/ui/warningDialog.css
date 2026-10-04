@@ -34,6 +34,13 @@
   color: #3c3c3c;
 }
 
+.pii-guard-note {
+  margin: 0 0 16px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #5f6368;
+}
+
 .pii-guard-list {
   margin: 0 0 20px;
   padding: 0;

@@ -6,6 +6,9 @@ const { loadSettings, buildScanOptions, isRecipientListTrusted } = require('../s
 
 const ADAPTERS = [gmailAdapter, outlookAdapter];
 const LIVE_SCAN_DEBOUNCE_MS = 400;
+// How long a compose may sit without a recognizable Send button before the
+// tab is flagged. Buttons often render a moment after the body does.
+const MISSING_SEND_BUTTON_GRACE_MS = 3000;
 
 function pickAdapter(hostname) {
   return ADAPTERS.find((a) => a.hostnames.some((h) => hostname.endsWith(h))) || null;
@@ -56,12 +59,15 @@ function showBlockDialog(findings, adapter, sendButton) {
 
   openDialogAdapter = adapter;
   createWarningDialog(document, findings, {
-    onSendAnyway: () => {
-      openDialogAdapter = null;
-      if (!sendButton) return;
-      confirmedButtons.add(sendButton);
-      sendButton.click();
-    },
+    // Without a Send button there's nothing to click, so the dialog shows a
+    // note instead of a "Send anyway" button that would do nothing.
+    onSendAnyway: sendButton
+      ? () => {
+        openDialogAdapter = null;
+        confirmedButtons.add(sendButton);
+        sendButton.click();
+      }
+      : undefined,
     onEditDraft: () => {
       openDialogAdapter = null;
     },
@@ -143,21 +149,75 @@ function handleKeydown(event) {
   showBlockDialog(findings, compose.adapter, sendButton);
 }
 
+let lastLiveCount = 0;
+/** Composes whose Send button still couldn't be found after the grace period. */
+const composesMissingSendButton = new Set();
+const missingSendButtonTimers = new Map();
+
+/**
+ * Sends this tab's badge state to the background: the live PII count, and
+ * whether any open compose is unguarded because its Send button couldn't be
+ * found (e.g. an unsupported UI language).
+ */
+function reportTabStatus() {
+  chrome.runtime.sendMessage({
+    type: 'PII_TAB_STATUS',
+    count: lastLiveCount,
+    sendButtonMissing: composesMissingSendButton.size > 0,
+  });
+}
+
+/**
+ * Tracks whether a compose has a Send button the guard could attach to. A
+ * compose still without one after MISSING_SEND_BUTTON_GRACE_MS flags the tab,
+ * so an unrecognized UI never fails silently.
+ */
+function trackSendButton(adapter, composeContainer, sendButton) {
+  if (sendButton) {
+    clearTimeout(missingSendButtonTimers.get(composeContainer));
+    missingSendButtonTimers.delete(composeContainer);
+    if (composesMissingSendButton.delete(composeContainer)) reportTabStatus();
+    return;
+  }
+  if (missingSendButtonTimers.has(composeContainer) || composesMissingSendButton.has(composeContainer)) {
+    return;
+  }
+  missingSendButtonTimers.set(
+    composeContainer,
+    setTimeout(() => {
+      missingSendButtonTimers.delete(composeContainer);
+      if (!composeContainer.isConnected || adapter.findSendButton(composeContainer)) return;
+      composesMissingSendButton.add(composeContainer);
+      reportTabStatus();
+    }, MISSING_SEND_BUTTON_GRACE_MS)
+  );
+}
+
+/** Drops closed composes from the missing-Send-button set, clearing the flag when none remain. */
+function pruneClosedComposes() {
+  let changed = false;
+  for (const container of composesMissingSendButton) {
+    if (!container.isConnected) {
+      composesMissingSendButton.delete(container);
+      changed = true;
+    }
+  }
+  if (changed) reportTabStatus();
+}
+
 /** Scans the current draft text and reflects the result in the toolbar badge, debounced. */
 function scheduleLiveScan(bodyEl, adapter, composeContainer) {
   clearTimeout(liveScanTimers.get(bodyEl));
   const timer = setTimeout(() => {
     if (!currentSettings || !currentSettings.guardEnabled || !currentSettings.liveScanEnabled) {
-      chrome.runtime.sendMessage({ type: 'PII_LIVE_COUNT', count: 0 });
-      return;
+      lastLiveCount = 0;
+    } else if (isFullyTrustedRecipients(adapter, composeContainer)) {
+      lastLiveCount = 0;
+    } else {
+      const text = adapter.getComposeText(composeContainer);
+      lastLiveCount = scanText(text, buildScanOptions(currentSettings)).findings.length;
     }
-    if (isFullyTrustedRecipients(adapter, composeContainer)) {
-      chrome.runtime.sendMessage({ type: 'PII_LIVE_COUNT', count: 0 });
-      return;
-    }
-    const text = adapter.getComposeText(composeContainer);
-    const { findings } = scanText(text, buildScanOptions(currentSettings));
-    chrome.runtime.sendMessage({ type: 'PII_LIVE_COUNT', count: findings.length });
+    reportTabStatus();
   }, LIVE_SCAN_DEBOUNCE_MS);
   liveScanTimers.set(bodyEl, timer);
 }
@@ -168,9 +228,9 @@ function attachLiveScan(bodyEl, adapter, composeContainer) {
   bodyEl.addEventListener('input', () => scheduleLiveScan(bodyEl, adapter, composeContainer));
 }
 
-function scanForComposeWindows() {
-  const adapter = pickAdapter(location.hostname);
+function scanForComposeWindows(adapter = pickAdapter(location.hostname)) {
   if (!adapter) return;
+  pruneClosedComposes();
 
   const bodies = adapter.findComposeBodies(document);
   for (const body of bodies) {
@@ -179,6 +239,7 @@ function scanForComposeWindows() {
 
     const sendButton = adapter.findSendButton(container);
     if (sendButton) attachGuard(sendButton, adapter, container);
+    trackSendButton(adapter, container, sendButton);
     registerCompose(adapter, container);
 
     attachLiveScan(body, adapter, container);
@@ -189,7 +250,7 @@ function init() {
   const adapter = pickAdapter(location.hostname);
   if (!adapter) return;
 
-  refreshSettings().then(scanForComposeWindows);
+  refreshSettings().then(() => scanForComposeWindows());
 
   window.addEventListener('keydown', handleKeydown, true);
 

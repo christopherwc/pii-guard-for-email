@@ -1,4 +1,5 @@
 const { scanText, scanDraft, redact, compileCustomRule } = require('../src/detector/piiDetector');
+const { luhnCheck } = require('../src/detector/piiRules');
 
 describe('scanText', () => {
   test('returns clean for empty or PII-free text', () => {
@@ -36,6 +37,42 @@ describe('scanText', () => {
     expect(findings.some((f) => f.ruleId === 'creditCard')).toBe(false);
   });
 
+  test('detects published test numbers from every major card network', () => {
+    const cards = [
+      '4111 1111 1111 1111', // Visa
+      '5555 5555 5555 4444', // Mastercard
+      '2223 0031 2200 3222', // Mastercard 2-series
+      '3782 822463 10005', // American Express
+      '6011 1111 1111 1117', // Discover
+      '3530 1113 3330 0000', // JCB
+      '3056 9309 0259 04', // Diners Club
+      '6200 0000 0000 0005', // UnionPay
+    ];
+    for (const card of cards) {
+      expect(scanText(`Card: ${card}`).findings.map((f) => f.ruleId)).toContain('creditCard');
+    }
+  });
+
+  test('ignores Luhn-valid numbers that no card network issues, like order or tracking numbers', () => {
+    /** Appends the digit that makes `partial` pass the Luhn check. */
+    const withLuhnDigit = (partial) => {
+      for (let d = 0; d <= 9; d++) {
+        if (luhnCheck(`${partial}${d}`)) return `${partial}${d}`;
+      }
+      throw new Error('unreachable');
+    };
+    const notCards = [
+      withLuhnDigit('100234567890123'), // 16 digits starting with 1
+      withLuhnDigit('940011189922310'), // USPS-style, starts with 9
+      withLuhnDigit('70000000000000'), // starts with 7
+      withLuhnDigit('371449635398431'), // Amex prefix but 16 digits (Amex is 15)
+    ];
+    for (const number of notCards) {
+      expect(luhnCheck(number)).toBe(true);
+      expect(scanText(`Order #${number}`).findings.map((f) => f.ruleId)).not.toContain('creditCard');
+    }
+  });
+
   test('detects US phone numbers in common formats', () => {
     expect(scanText('Call (415) 555-0132').findings.some((f) => f.ruleId === 'phone')).toBe(true);
     expect(scanText('Call 415-555-0132').findings.some((f) => f.ruleId === 'phone')).toBe(true);
@@ -54,6 +91,25 @@ describe('scanText', () => {
   test('detects generic API-style secret tokens', () => {
     expect(scanText('token sk-abcdefghijklmnopqrstuvwx').findings.some((f) => f.ruleId === 'apiKey')).toBe(true);
     expect(scanText('token ghp_' + 'a'.repeat(36)).findings.some((f) => f.ruleId === 'apiKey')).toBe(true);
+  });
+
+  test('detects passport numbers after a "passport" label', () => {
+    const passportMatches = (text) => scanText(text).findings
+      .filter((f) => f.ruleId === 'passport')
+      .map((f) => f.match);
+
+    expect(passportMatches('passport no: X12345678')).toEqual(['passport no: X12345678']);
+    expect(passportMatches('Passport # 123456789')).toEqual(['Passport # 123456789']);
+    expect(passportMatches('passport number 987654321')).toEqual(['passport number 987654321']);
+  });
+
+  test('does not flag ordinary words after "passport" as a passport number', () => {
+    const hasPassport = (text) => scanText(text).findings.some((f) => f.ruleId === 'passport');
+
+    expect(hasPassport('my passport number is below')).toBe(false);
+    expect(hasPassport('Please send your passport numbers')).toBe(false);
+    expect(hasPassport('passport photos are attached')).toBe(false);
+    expect(hasPassport('passport expires next spring')).toBe(false);
   });
 
   test('detects bank account/routing number mentions', () => {

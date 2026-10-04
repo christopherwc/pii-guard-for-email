@@ -64,4 +64,11 @@ describe('createWarningDialog', () => {
     expect(onSendAnyway).toHaveBeenCalledTimes(1);
     expect(document.querySelector('.pii-guard-overlay')).toBeNull();
   });
+
+  test('without onSendAnyway, shows a note instead of a "Send anyway" button', () => {
+    const overlay = createWarningDialog(document, findings, { onEditDraft: () => {} });
+    expect(overlay.querySelector('.pii-guard-btn-danger')).toBeNull();
+    expect(overlay.querySelector('.pii-guard-note').textContent).toMatch(/click Send/);
+    overlay.remove();
+  });
 });

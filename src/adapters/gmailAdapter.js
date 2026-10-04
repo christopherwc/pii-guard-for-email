@@ -1,4 +1,5 @@
 const { findByAccessibleName, getElementText, isInside, getTypedRecipients } = require('./adapterUtils');
+const { SEND_LABEL_PREFIXES } = require('./localeLabels');
 
 /**
  * Adapter for Gmail's web UI (mail.google.com).
@@ -27,7 +28,7 @@ function findComposeContainer(bodyEl) {
 
 /** Finds the Send button within a compose container. */
 function findSendButton(container) {
-  const candidates = findByAccessibleName(container, SEND_BUTTON_SELECTOR, ['send']);
+  const candidates = findByAccessibleName(container, SEND_BUTTON_SELECTOR, SEND_LABEL_PREFIXES);
   return candidates[0] || null;
 }
 

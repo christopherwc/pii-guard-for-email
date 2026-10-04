@@ -58,7 +58,7 @@ describe('live scan + trusted recipients', () => {
     expect(global.chrome.runtime.sendMessage).not.toHaveBeenCalled();
 
     jest.advanceTimersByTime(1);
-    expect(global.chrome.runtime.sendMessage).toHaveBeenCalledWith({ type: 'PII_LIVE_COUNT', count: 1 });
+    expect(global.chrome.runtime.sendMessage).toHaveBeenCalledWith({ type: 'PII_TAB_STATUS', count: 1, sendButtonMissing: false });
   });
 
   test('scheduleLiveScan debounces rapid successive calls to a single message', async () => {
@@ -82,7 +82,7 @@ describe('live scan + trusted recipients', () => {
 
     content.scheduleLiveScan({}, adapter, {});
     jest.advanceTimersByTime(400);
-    expect(global.chrome.runtime.sendMessage).toHaveBeenCalledWith({ type: 'PII_LIVE_COUNT', count: 0 });
+    expect(global.chrome.runtime.sendMessage).toHaveBeenCalledWith({ type: 'PII_TAB_STATUS', count: 0, sendButtonMissing: false });
   });
 
   test('isFullyTrustedRecipients is true only when trusted domains are configured and all recipients match', async () => {
@@ -103,7 +103,7 @@ describe('live scan + trusted recipients', () => {
 
     content.scheduleLiveScan({}, adapter, {});
     jest.advanceTimersByTime(400);
-    expect(global.chrome.runtime.sendMessage).toHaveBeenCalledWith({ type: 'PII_LIVE_COUNT', count: 0 });
+    expect(global.chrome.runtime.sendMessage).toHaveBeenCalledWith({ type: 'PII_TAB_STATUS', count: 0, sendButtonMissing: false });
   });
 });
 
@@ -240,5 +240,121 @@ describe('keyboard send shortcut guard', () => {
 
     expect(pressCtrlEnter(bodyDiv).defaultPrevented).toBe(true);
     expect(overlays()).toHaveLength(1);
+  });
+});
+
+describe('missing Send button detection', () => {
+  let content;
+  let gmailAdapter;
+
+  beforeEach(() => {
+    jest.resetModules();
+    jest.useFakeTimers();
+    global.chrome = {
+      storage: {
+        sync: { get: jest.fn(), set: jest.fn() },
+        onChanged: { addListener: jest.fn() },
+      },
+      runtime: { sendMessage: jest.fn() },
+    };
+    content = require('../src/content/content');
+    gmailAdapter = require('../src/adapters/gmailAdapter');
+    window.addEventListener('keydown', content.handleKeydown, true);
+  });
+
+  afterEach(() => {
+    window.removeEventListener('keydown', content.handleKeydown, true);
+    document.body.innerHTML = '';
+    jest.useRealTimers();
+    delete global.chrome;
+  });
+
+  function loadSettingsInto(overrides) {
+    const { defaultSettings } = require('../src/settings');
+    const settings = { ...defaultSettings(), ...overrides };
+    global.chrome.storage.sync.get.mockImplementation((key, cb) => cb({ piiGuardSettings: settings }));
+    return content.refreshSettings();
+  }
+
+  /** A Gmail compose whose Send button has an unrecognized (e.g. untranslated) label. */
+  function buildComposeWithUnknownSendLabel(body = 'hello') {
+    const dialog = document.createElement('div');
+    dialog.setAttribute('role', 'dialog');
+    const bodyDiv = document.createElement('div');
+    bodyDiv.setAttribute('g_editable', 'true');
+    bodyDiv.setAttribute('role', 'textbox');
+    Object.defineProperty(bodyDiv, 'innerText', { value: body, configurable: true });
+    dialog.appendChild(bodyDiv);
+    const sendBtn = document.createElement('div');
+    sendBtn.setAttribute('role', 'button');
+    sendBtn.setAttribute('aria-label', 'Lähetä'); // Finnish - not in the label list
+    dialog.appendChild(sendBtn);
+    document.body.appendChild(dialog);
+    return { dialog, bodyDiv, sendBtn };
+  }
+
+  const statusMessages = () => global.chrome.runtime.sendMessage.mock.calls
+    .map(([msg]) => msg)
+    .filter((msg) => msg.type === 'PII_TAB_STATUS');
+
+  test('flags the tab only after the grace period when no Send button is found', () => {
+    buildComposeWithUnknownSendLabel();
+
+    content.scanForComposeWindows(gmailAdapter);
+    jest.advanceTimersByTime(2999);
+    content.scanForComposeWindows(gmailAdapter); // observer re-runs must not restart the timer
+    expect(statusMessages()).toEqual([]);
+
+    jest.advanceTimersByTime(1);
+    expect(statusMessages()).toEqual([{ type: 'PII_TAB_STATUS', count: 0, sendButtonMissing: true }]);
+  });
+
+  test('does not flag the tab when the Send button renders during the grace period', () => {
+    const { sendBtn } = buildComposeWithUnknownSendLabel();
+
+    content.scanForComposeWindows(gmailAdapter);
+    sendBtn.setAttribute('aria-label', 'Send');
+    jest.advanceTimersByTime(3000);
+
+    expect(statusMessages()).toEqual([]);
+  });
+
+  test('clears the flag once the Send button appears or the compose closes', () => {
+    const { dialog, sendBtn } = buildComposeWithUnknownSendLabel();
+    content.scanForComposeWindows(gmailAdapter);
+    jest.advanceTimersByTime(3000);
+
+    sendBtn.setAttribute('aria-label', 'Send');
+    content.scanForComposeWindows(gmailAdapter);
+    expect(statusMessages().pop()).toEqual({ type: 'PII_TAB_STATUS', count: 0, sendButtonMissing: false });
+
+    sendBtn.setAttribute('aria-label', 'Lähetä');
+    const other = buildComposeWithUnknownSendLabel();
+    content.scanForComposeWindows(gmailAdapter);
+    jest.advanceTimersByTime(3000);
+    expect(statusMessages().pop().sendButtonMissing).toBe(true);
+
+    dialog.remove();
+    other.dialog.remove();
+    content.scanForComposeWindows(gmailAdapter);
+    expect(statusMessages().pop()).toEqual({ type: 'PII_TAB_STATUS', count: 0, sendButtonMissing: false });
+  });
+
+  test('keyboard send with PII and no Send button blocks without offering "Send anyway"', async () => {
+    await loadSettingsInto({});
+    const { bodyDiv } = buildComposeWithUnknownSendLabel('ssn 219-09-9999');
+    content.scanForComposeWindows(gmailAdapter);
+
+    const event = new KeyboardEvent('keydown', {
+      key: 'Enter', ctrlKey: true, bubbles: true, cancelable: true,
+    });
+    bodyDiv.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(document.querySelector('.pii-guard-btn-danger')).toBeNull();
+    expect(document.querySelector('.pii-guard-note').textContent).toMatch(/couldn't find/);
+
+    document.querySelector('.pii-guard-btn-primary').click();
+    expect(document.querySelector('.pii-guard-overlay')).toBeNull();
   });
 });

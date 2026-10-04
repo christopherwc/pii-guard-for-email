@@ -141,3 +141,24 @@ describe('gmailAdapter.isSendShortcut', () => {
     expect(gmailAdapter.isSendShortcut(key({ key: 'Enter', ctrlKey: true, isComposing: true }))).toBe(false);
   });
 });
+
+describe('gmailAdapter in a non-English UI', () => {
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  test.each(['Envoyer', 'Senden', 'Enviar', 'Invia', '送信'])('finds a Send button labelled "%s"', (label) => {
+    const { dialog, sendBtn } = buildComposeFixture(document, { body: 'hi', sendLabel: label });
+    expect(gmailAdapter.findSendButton(dialog)).toBe(sendBtn);
+  });
+
+  test('does not mistake an unrelated localized button for Send', () => {
+    const { dialog, sendBtn } = buildComposeFixture(document, { body: 'hi', sendLabel: 'Envoyer' });
+    const discard = document.createElement('div');
+    discard.setAttribute('role', 'button');
+    discard.setAttribute('aria-label', 'Supprimer le brouillon');
+    dialog.insertBefore(discard, sendBtn);
+
+    expect(gmailAdapter.findSendButton(dialog)).toBe(sendBtn);
+  });
+});

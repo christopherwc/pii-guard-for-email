@@ -5,6 +5,11 @@ const {
   isInside,
   getTypedRecipients,
 } = require('./adapterUtils');
+const {
+  SEND_LABEL_PREFIXES,
+  SUBJECT_LABEL_WORDS,
+  ariaLabelContainsSelector,
+} = require('./localeLabels');
 
 /**
  * Adapter for Outlook on the web (outlook.office.com, outlook.live.com,
@@ -15,7 +20,7 @@ const id = 'outlook';
 const hostnames = ['outlook.office.com', 'outlook.live.com', 'outlook.office365.com'];
 
 const BODY_SELECTOR = 'div[aria-label="Message body"][contenteditable="true"], div[aria-label="Message Body"][contenteditable="true"], div[role="textbox"][contenteditable="true"]';
-const SUBJECT_SELECTOR = 'input[aria-label="Add a subject"], input[aria-label="Subject"]';
+const SUBJECT_SELECTOR = ariaLabelContainsSelector('input', SUBJECT_LABEL_WORDS);
 const SEND_BUTTON_SELECTOR = 'button, div[role="button"]';
 
 function findComposeBodies(root) {
@@ -30,7 +35,7 @@ function findComposeContainer(bodyEl) {
 }
 
 function findSendButton(container) {
-  const candidates = findByAccessibleName(container, SEND_BUTTON_SELECTOR, ['send']);
+  const candidates = findByAccessibleName(container, SEND_BUTTON_SELECTOR, SEND_LABEL_PREFIXES);
   return candidates[0] || null;
 }
 

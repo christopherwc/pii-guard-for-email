@@ -75,17 +75,69 @@ describe('gmailAdapter', () => {
     expect(gmailAdapter.getRecipients(dialog)).toEqual(['alice@company.com', 'bob@company.com']);
   });
 
-  test('falls back to scanning text for recipients when no chips are present', () => {
-    const { dialog, bodyDiv } = buildComposeFixture(document, { body: 'hi' });
-    Object.defineProperty(dialog, 'innerText', {
-      value: `carol@company.com ${bodyDiv.innerText}`,
-      configurable: true,
-    });
+  test('never reads recipients from the message body', () => {
+    const { dialog, bodyDiv } = buildComposeFixture(document, { body: 'cc carol@company.com' });
+    Object.defineProperty(dialog, 'innerText', { value: bodyDiv.innerText, configurable: true });
 
-    expect(gmailAdapter.getRecipients(dialog)).toEqual(['carol@company.com']);
+    expect(gmailAdapter.getRecipients(dialog)).toEqual([]);
+  });
+
+  test('ignores recipient-looking elements inside the message body', () => {
+    const { dialog, bodyDiv } = buildComposeFixture(document, { body: 'hi' });
+    const chip = document.createElement('span');
+    chip.setAttribute('email', 'alice@company.com');
+    bodyDiv.appendChild(chip);
+
+    expect(gmailAdapter.getRecipients(dialog)).toEqual([]);
+  });
+
+  test('includes addresses still typed into a recipient input alongside chips', () => {
+    const { dialog } = buildComposeFixture(document, { subject: 'see bob@company.com', body: 'hi' });
+    const chip = document.createElement('span');
+    chip.setAttribute('email', 'alice@company.com');
+    dialog.appendChild(chip);
+    const toInput = document.createElement('input');
+    toInput.value = 'outsider@gmail.com';
+    dialog.appendChild(toInput);
+
+    expect(gmailAdapter.getRecipients(dialog)).toEqual(['alice@company.com', 'outsider@gmail.com']);
+  });
+
+  test('returns unresolved typed recipients as-is so they are never trusted', () => {
+    const { dialog } = buildComposeFixture(document, { body: 'hi' });
+    const toInput = document.createElement('input');
+    toInput.value = 'bob, carol@company.com';
+    dialog.appendChild(toInput);
+
+    expect(gmailAdapter.getRecipients(dialog)).toEqual(['bob', 'carol@company.com']);
+  });
+
+  test('skips hidden inputs such as the sender address', () => {
+    const { dialog } = buildComposeFixture(document, { body: 'hi' });
+    const fromInput = document.createElement('input');
+    fromInput.type = 'hidden';
+    fromInput.value = 'me@company.com';
+    dialog.appendChild(fromInput);
+
+    expect(gmailAdapter.getRecipients(dialog)).toEqual([]);
   });
 
   afterEach(() => {
     document.body.innerHTML = '';
+  });
+});
+
+describe('gmailAdapter.isSendShortcut', () => {
+  const key = (init) => new KeyboardEvent('keydown', init);
+
+  test('matches Ctrl+Enter and Cmd+Enter', () => {
+    expect(gmailAdapter.isSendShortcut(key({ key: 'Enter', ctrlKey: true }))).toBe(true);
+    expect(gmailAdapter.isSendShortcut(key({ key: 'Enter', metaKey: true }))).toBe(true);
+  });
+
+  test('ignores plain Enter, Alt+S, and IME composition', () => {
+    expect(gmailAdapter.isSendShortcut(key({ key: 'Enter' }))).toBe(false);
+    expect(gmailAdapter.isSendShortcut(key({ key: 's', code: 'KeyS', altKey: true }))).toBe(false);
+    expect(gmailAdapter.isSendShortcut(key({ key: 'Enter', ctrlKey: true, isComposing: true }))).toBe(false);
   });
 });

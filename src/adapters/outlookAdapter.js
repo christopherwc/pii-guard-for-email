@@ -1,4 +1,10 @@
-const { findByAccessibleName, getElementText, extractEmailsFromText } = require('./adapterUtils');
+const {
+  findByAccessibleName,
+  getElementText,
+  extractEmailsFromText,
+  isInside,
+  getTypedRecipients,
+} = require('./adapterUtils');
 
 /**
  * Adapter for Outlook on the web (outlook.office.com, outlook.live.com,
@@ -32,16 +38,29 @@ function findSendButton(container) {
  * Returns the email addresses of every recipient (To/Cc/Bcc) in a compose
  * container. Outlook recipient "personas" commonly carry the address in a
  * `title` attribute (as plain "name@domain.com" or "Name <name@domain.com>");
- * if none are found this falls back to scanning the container's text.
+ * addresses still typed into a recipient input are included too. The message
+ * body is never read, so an address mentioned (or linked) in the body can't
+ * make the draft look internal. If no recipients can be found this returns
+ * [], which is treated as untrusted.
  */
 function getRecipients(container) {
-  const titledEls = Array.from(container.querySelectorAll('[title]'));
+  const titledEls = Array.from(container.querySelectorAll('[title]'))
+    .filter((el) => !isInside(el, container, BODY_SELECTOR));
   const emails = [];
   for (const el of titledEls) {
     emails.push(...extractEmailsFromText(el.getAttribute('title')));
   }
-  if (emails.length) return emails;
-  return extractEmailsFromText(getElementText(container));
+  return [...emails, ...getTypedRecipients(container, SUBJECT_SELECTOR)];
+}
+
+/**
+ * True for Outlook's keyboard send shortcuts: Ctrl+Enter / Cmd+Enter, and
+ * Alt+S. Alt+S is matched on `code` because macOS turns Option+S into "ß".
+ */
+function isSendShortcut(event) {
+  if (event.isComposing) return false;
+  if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) return true;
+  return event.altKey && event.code === 'KeyS';
 }
 
 function getComposeText(container) {
@@ -60,4 +79,5 @@ module.exports = {
   findSendButton,
   getComposeText,
   getRecipients,
+  isSendShortcut,
 };

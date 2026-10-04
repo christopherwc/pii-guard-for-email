@@ -9,7 +9,8 @@ server. See [How it works](#how-it-works) for details.
 
 ## Features
 
-- Scans the subject and body of a draft the moment you click **Send**.
+- Scans the subject and body of a draft the moment you click **Send** or
+  use the keyboard send shortcut (Ctrl/Cmd+Enter, or Alt+S in Outlook).
 - Detects, by default:
   - Email addresses
   - Social Security Numbers
@@ -119,10 +120,12 @@ Web Store API upload endpoint expects.
 - **Content script** (`src/content/content.js`): picks the right adapter for
   the current site, watches the page for compose windows via a
   `MutationObserver`, and attaches a capture-phase `click` listener to each
-  Send button. On click, it scans the compose text; if it's clean the click
-  proceeds normally, otherwise the click is cancelled and a blocking dialog
-  (`src/ui/warningDialog.js`) is shown. Choosing "Send anyway" replays the
-  click, bypassing the guard exactly once for that button.
+  Send button, plus one capture-phase `keydown` listener on `window` for the
+  provider's keyboard send shortcut. On either, it scans the compose text; if
+  it's clean the send proceeds normally, otherwise the event is cancelled and
+  a blocking dialog (`src/ui/warningDialog.js`) is shown. Choosing "Send
+  anyway" clicks the Send button, bypassing the guard exactly once for that
+  button.
 - **Background service worker**: sets default settings on install, tracks a
   running count of blocked sends (shown in the options page), and drives the
   toolbar badge from live-scan messages sent by the content script.
@@ -149,9 +152,16 @@ Web Store API upload endpoint expects.
   drafts - keep custom patterns simple and specific.
 - Recipient extraction (used for the trusted-domains feature) relies on
   attributes Gmail/Outlook happen to expose today (`email` on Gmail chips,
-  `title` on Outlook personas) and falls back to scanning visible text if
-  those aren't present; it can miss recipients in an unusual layout, in
-  which case the draft is scanned as normal rather than silently skipped.
+  `title` on Outlook personas) plus anything still typed into a recipient
+  input. The message body is never used, so an internal address mentioned
+  in the body can't make an external draft look trusted. Typed entries that
+  aren't a full address (e.g. a half-typed name) count as untrusted. If
+  recipients can't be found the draft is scanned as normal rather than
+  silently skipped.
+- The keyboard-shortcut guard listens in the capture phase on `window`, but
+  a page handler registered earlier on `window` could still see the
+  shortcut first. Verify in a real Gmail/Outlook session after provider
+  UI changes.
 
 ## Privacy
 

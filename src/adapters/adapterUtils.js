@@ -45,9 +45,40 @@ function extractEmailsFromText(text) {
   return text.match(new RegExp(EMAIL_PATTERN.source, EMAIL_PATTERN.flags)) || [];
 }
 
+/** True when `el` sits inside any element under `root` matching `selector`. */
+function isInside(el, root, selector) {
+  return Array.from(root.querySelectorAll(selector)).some((match) => match.contains(el));
+}
+
+const RECIPIENT_INPUT_SELECTOR = 'input:not([type]), input[type="text"], input[type="email"], textarea';
+
+/**
+ * Reads recipients still sitting as raw text in the compose's visible input
+ * fields (e.g. an address typed into To but not yet turned into a chip).
+ * The subject field is skipped. Each comma/semicolon-separated entry that
+ * doesn't contain an email address is returned as-is: it has no domain, so
+ * isRecipientListTrusted() treats the draft as untrusted, which is the safe
+ * outcome for a recipient we can't identify yet.
+ */
+function getTypedRecipients(container, subjectSelector) {
+  const recipients = [];
+  const inputs = Array.from(container.querySelectorAll(RECIPIENT_INPUT_SELECTOR));
+  for (const input of inputs) {
+    if (input.matches(subjectSelector)) continue;
+    const entries = (input.value || '').split(/[,;]/).map((s) => s.trim()).filter(Boolean);
+    for (const entry of entries) {
+      const emails = extractEmailsFromText(entry);
+      recipients.push(...(emails.length ? emails : [entry]));
+    }
+  }
+  return recipients;
+}
+
 module.exports = {
   accessibleNameStartsWith,
   findByAccessibleName,
   getElementText,
   extractEmailsFromText,
+  isInside,
+  getTypedRecipients,
 };

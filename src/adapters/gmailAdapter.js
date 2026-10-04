@@ -1,4 +1,4 @@
-const { findByAccessibleName, getElementText, extractEmailsFromText } = require('./adapterUtils');
+const { findByAccessibleName, getElementText, isInside, getTypedRecipients } = require('./adapterUtils');
 
 /**
  * Adapter for Gmail's web UI (mail.google.com).
@@ -36,15 +36,23 @@ const RECIPIENT_CHIP_SELECTOR = 'span[email]';
 /**
  * Returns the email addresses of every recipient (To/Cc/Bcc) in a compose
  * container. Gmail tags each recipient "chip" with a stable `email`
- * attribute; if none are found (e.g. the field still holds raw typed text)
- * this falls back to scanning the container's text for email addresses.
+ * attribute; addresses still typed into a recipient input (not yet a chip)
+ * are included too. The message body is never read, so an address mentioned
+ * in the body can't make the draft look internal. If no recipients can be
+ * found this returns [], which is treated as untrusted.
  */
 function getRecipients(container) {
-  const chips = Array.from(container.querySelectorAll(RECIPIENT_CHIP_SELECTOR));
-  if (chips.length) {
-    return chips.map((c) => c.getAttribute('email')).filter(Boolean);
-  }
-  return extractEmailsFromText(getElementText(container));
+  const chips = Array.from(container.querySelectorAll(RECIPIENT_CHIP_SELECTOR))
+    .filter((c) => !isInside(c, container, BODY_SELECTOR))
+    .map((c) => c.getAttribute('email'))
+    .filter(Boolean);
+  return [...chips, ...getTypedRecipients(container, SUBJECT_SELECTOR)];
+}
+
+/** True for Gmail's keyboard send shortcut (Ctrl+Enter / Cmd+Enter). */
+function isSendShortcut(event) {
+  if (event.isComposing) return false;
+  return event.key === 'Enter' && (event.ctrlKey || event.metaKey);
 }
 
 /** Concatenates subject + body text for a compose container so both get scanned. */
@@ -64,4 +72,5 @@ module.exports = {
   findSendButton,
   getComposeText,
   getRecipients,
+  isSendShortcut,
 };

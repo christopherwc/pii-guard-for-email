@@ -23,6 +23,10 @@ server. See [How it works](#how-it-works) for details.
   - Bank routing/account number mentions
   - Passport number mentions
   - Date-of-birth mentions
+- **Quiet on replies**: email addresses and phone numbers in your signature
+  or in quoted earlier messages ("On Mon, Bob <bob@x.com> wrote:") aren't
+  flagged. Every other rule still runs there, so e.g. an SSN in a forwarded
+  message is still caught.
 - Blocks the send with a modal listing what was found (values are masked,
   e.g. `••••1111`) and lets you either go back and edit, or explicitly
   **Send anyway**.
@@ -153,6 +157,11 @@ Web Store API upload endpoint expects.
   language the toolbar shows **!**: drafts there aren't guarded until a
   label is added. Keyboard sends are still checked, but the warning can't
   offer "Send anyway" without a known Send button.
+- Quoted text and signatures are recognized by the markup Gmail
+  (`.gmail_quote`, `.gmail_signature`) and Outlook (`#appendonsend`,
+  `#divRplyFwdMsg`, `#Signature`) put in the message. If that markup isn't
+  found, the text is scanned as if you wrote it, so contact details there may
+  be flagged.
 - Gmail and Outlook frequently change their DOM. The adapters target stable
   accessibility attributes to minimize breakage, but a future redesign could
   still require adapter updates.

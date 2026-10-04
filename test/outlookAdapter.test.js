@@ -57,7 +57,7 @@ describe('outlookAdapter', () => {
       subject: 'Invoice',
       body: 'card 4111 1111 1111 1111',
     });
-    const text = outlookAdapter.getComposeText(dialog);
+    const text = outlookAdapter.getComposeParts(dialog).authored;
     expect(text).toContain('Invoice');
     expect(text).toContain('4111 1111 1111 1111');
   });
@@ -170,7 +170,7 @@ describe('outlookAdapter in a non-English UI', () => {
   test('scans a localized subject field and never treats it as a recipient', () => {
     const { dialog } = buildGermanCompose({ subject: 'SVN 219-09-9999', body: 'Hallo' });
 
-    expect(outlookAdapter.getComposeText(dialog)).toContain('219-09-9999');
+    expect(outlookAdapter.getComposeParts(dialog).authored).toContain('219-09-9999');
     expect(outlookAdapter.getRecipients(dialog)).toEqual([]);
   });
 
@@ -193,6 +193,39 @@ describe('outlookAdapter in a non-English UI', () => {
     dialog.append(subjectInput, sendBtn);
 
     expect(outlookAdapter.findSendButton(dialog)).toBe(sendBtn);
-    expect(outlookAdapter.getComposeText(dialog)).toContain('topic');
+    expect(outlookAdapter.getComposeParts(dialog).authored).toContain('topic');
+  });
+});
+
+describe('outlookAdapter.getComposeParts', () => {
+  const setText = (el, text) => Object.defineProperty(el, 'innerText', { value: text, configurable: true });
+
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  test('treats the signature and everything after #appendonsend as quoted', () => {
+    const { dialog, bodyDiv } = buildComposeFixture(document, { subject: 'RE: plans' });
+    const authoredDiv = document.createElement('div');
+    setText(authoredDiv, 'Works for me.');
+    const sig = document.createElement('div');
+    sig.id = 'Signature';
+    setText(sig, 'Jane Doe | 415-555-0132');
+    const marker = document.createElement('div');
+    marker.id = 'appendonsend';
+    const header = document.createElement('div');
+    header.id = 'divRplyFwdMsg';
+    setText(header, 'From: Bob <bob@example.com>');
+    const original = document.createElement('div');
+    setText(original, 'Lunch Friday?');
+    bodyDiv.append(authoredDiv, sig, marker, document.createElement('hr'), header, original);
+    setText(bodyDiv, 'Works for me.\nJane Doe | 415-555-0132\n\nFrom: Bob <bob@example.com>\nLunch Friday?');
+
+    const { authored, quoted } = outlookAdapter.getComposeParts(dialog);
+    expect(authored).toContain('Works for me.');
+    expect(authored).not.toMatch(/555-0132|bob@example\.com|Lunch/);
+    expect(quoted).toContain('415-555-0132');
+    expect(quoted).toContain('bob@example.com');
+    expect(quoted).toContain('Lunch Friday?');
   });
 });

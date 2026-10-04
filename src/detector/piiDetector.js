@@ -89,6 +89,48 @@ function scanText(text, options = {}) {
 }
 
 /**
+ * Rules skipped in quoted text and signatures. Earlier messages and
+ * signatures are full of contact details ("On Mon, Bob <bob@x.com> wrote:",
+ * your own phone number) that the recipient already has, so flagging them on
+ * every reply is noise. Everything else still runs there, so e.g. an SSN in a
+ * forwarded message is still caught before it reaches new recipients.
+ */
+const QUOTED_TEXT_SKIPPED_RULES = new Set(['email', 'phone']);
+
+/**
+ * Scans a draft split into what the user wrote and what's quoted/signature
+ * (see the adapters' getComposeParts). The authored part is scanned with all
+ * the given options; the quoted part skips QUOTED_TEXT_SKIPPED_RULES. Quoted
+ * findings are flagged `quoted: true` and their indexes offset to follow the
+ * authored text.
+ *
+ * @param {{authored: string, quoted: string}} parts
+ * @param {Object} [options] - same as scanText()
+ * @returns same shape as scanText()
+ */
+function scanDraft(parts, options = {}) {
+  const authored = parts.authored || '';
+  const quoted = parts.quoted || '';
+  const authoredResult = scanText(authored, options);
+  if (!quoted) return authoredResult;
+
+  const baseRuleIds = options.enabledRuleIds
+    ? Array.from(options.enabledRuleIds)
+    : RULES.map((r) => r.id);
+  const quotedResult = scanText(quoted, {
+    ...options,
+    enabledRuleIds: baseRuleIds.filter((id) => !QUOTED_TEXT_SKIPPED_RULES.has(id)),
+  });
+
+  const offset = authored.length + 1;
+  const findings = [
+    ...authoredResult.findings,
+    ...quotedResult.findings.map((f) => ({ ...f, index: f.index + offset, quoted: true })),
+  ];
+  return { clean: findings.length === 0, findings };
+}
+
+/**
  * Redacts flagged findings within text, replacing each match with a
  * bracketed placeholder naming the rule that caught it. Useful for
  * previewing what would need to change before the message can be sent.
@@ -105,4 +147,4 @@ function redact(text, findings) {
   return result;
 }
 
-module.exports = { scanText, redact, compileCustomRule };
+module.exports = { scanText, scanDraft, redact, compileCustomRule, QUOTED_TEXT_SKIPPED_RULES };

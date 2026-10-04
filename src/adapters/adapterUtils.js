@@ -74,6 +74,40 @@ function getTypedRecipients(container, subjectSelector) {
   return recipients;
 }
 
+/**
+ * Splits a compose body's text into what the user wrote and what's quoted
+ * from earlier mail or added automatically (signature), given a selector for
+ * the quoted/signature elements.
+ *
+ * Text is read from the live elements (innerText needs rendering; a detached
+ * clone would lose line breaks between blocks and break word-boundary
+ * matching). Each quoted element's text is cut out of the body text. If one
+ * can't be located, everything is returned as authored, so all rules still
+ * run on it: noisy, but never less safe than not splitting at all.
+ */
+function splitBodyText(bodyEl, quotedSelector) {
+  const body = getElementText(bodyEl);
+  if (!bodyEl) return { authored: body, quoted: '' };
+
+  // Only outermost matches, so nested quotes aren't cut out twice.
+  const quotedEls = Array.from(bodyEl.querySelectorAll(quotedSelector)).filter((el) => {
+    const ancestor = el.parentElement && el.parentElement.closest(quotedSelector);
+    return !(ancestor && bodyEl.contains(ancestor));
+  });
+
+  let authored = body;
+  const quotedParts = [];
+  for (const el of quotedEls) {
+    const text = getElementText(el).trim();
+    if (!text) continue;
+    const at = authored.lastIndexOf(text);
+    if (at === -1) return { authored: body, quoted: '' };
+    authored = `${authored.slice(0, at)}\n${authored.slice(at + text.length)}`;
+    quotedParts.push(text);
+  }
+  return { authored, quoted: quotedParts.join('\n') };
+}
+
 module.exports = {
   accessibleNameStartsWith,
   findByAccessibleName,
@@ -81,4 +115,5 @@ module.exports = {
   extractEmailsFromText,
   isInside,
   getTypedRecipients,
+  splitBodyText,
 };

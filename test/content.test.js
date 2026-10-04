@@ -51,7 +51,7 @@ describe('live scan + trusted recipients', () => {
 
   test('scheduleLiveScan reports a debounced PII count for the current draft', async () => {
     await loadSettingsInto({});
-    const adapter = { getComposeText: () => 'ssn 219-09-9999', getRecipients: () => [] };
+    const adapter = { getComposeParts: () => ({ authored: 'ssn 219-09-9999', quoted: '' }), getRecipients: () => [] };
 
     content.scheduleLiveScan({}, adapter, {});
     jest.advanceTimersByTime(399);
@@ -63,7 +63,7 @@ describe('live scan + trusted recipients', () => {
 
   test('scheduleLiveScan debounces rapid successive calls to a single message', async () => {
     await loadSettingsInto({});
-    const adapter = { getComposeText: () => 'clean text', getRecipients: () => [] };
+    const adapter = { getComposeParts: () => ({ authored: 'clean text', quoted: '' }), getRecipients: () => [] };
     const bodyEl = {};
 
     content.scheduleLiveScan(bodyEl, adapter, {});
@@ -78,7 +78,7 @@ describe('live scan + trusted recipients', () => {
 
   test('scheduleLiveScan reports zero when live scanning is disabled', async () => {
     await loadSettingsInto({ liveScanEnabled: false });
-    const adapter = { getComposeText: () => 'ssn 219-09-9999', getRecipients: () => [] };
+    const adapter = { getComposeParts: () => ({ authored: 'ssn 219-09-9999', quoted: '' }), getRecipients: () => [] };
 
     content.scheduleLiveScan({}, adapter, {});
     jest.advanceTimersByTime(400);
@@ -97,7 +97,7 @@ describe('live scan + trusted recipients', () => {
   test('scheduleLiveScan reports zero when recipients are fully trusted', async () => {
     await loadSettingsInto({ trustedDomains: ['company.com'] });
     const adapter = {
-      getComposeText: () => 'ssn 219-09-9999',
+      getComposeParts: () => ({ authored: 'ssn 219-09-9999', quoted: '' }),
       getRecipients: () => ['a@company.com'],
     };
 
@@ -356,5 +356,105 @@ describe('missing Send button detection', () => {
 
     document.querySelector('.pii-guard-btn-primary').click();
     expect(document.querySelector('.pii-guard-overlay')).toBeNull();
+  });
+});
+
+describe('quoted text and signatures', () => {
+  let content;
+  let gmailAdapter;
+  const setText = (el, text) => Object.defineProperty(el, 'innerText', { value: text, configurable: true });
+
+  beforeEach(() => {
+    jest.resetModules();
+    jest.useFakeTimers();
+    global.chrome = {
+      storage: {
+        sync: { get: jest.fn(), set: jest.fn() },
+        onChanged: { addListener: jest.fn() },
+      },
+      runtime: { sendMessage: jest.fn() },
+    };
+    content = require('../src/content/content');
+    gmailAdapter = require('../src/adapters/gmailAdapter');
+    window.addEventListener('keydown', content.handleKeydown, true);
+  });
+
+  afterEach(() => {
+    window.removeEventListener('keydown', content.handleKeydown, true);
+    document.body.innerHTML = '';
+    jest.useRealTimers();
+    delete global.chrome;
+  });
+
+  function loadDefaultSettings() {
+    const { defaultSettings } = require('../src/settings');
+    global.chrome.storage.sync.get.mockImplementation((key, cb) => cb({ piiGuardSettings: defaultSettings() }));
+    return content.refreshSettings();
+  }
+
+  /** A Gmail reply whose quoted part holds `quotedText` after a signature with the user's own contact details. */
+  function buildGmailReply(authoredText, quotedText) {
+    const dialog = document.createElement('div');
+    dialog.setAttribute('role', 'dialog');
+    const bodyDiv = document.createElement('div');
+    bodyDiv.setAttribute('aria-label', 'Message Body');
+    bodyDiv.setAttribute('contenteditable', 'true');
+    const sig = document.createElement('div');
+    sig.className = 'gmail_signature';
+    setText(sig, 'Jane Doe\njane@example.com\n(415) 555-0132');
+    const quote = document.createElement('div');
+    quote.className = 'gmail_quote';
+    setText(quote, quotedText);
+    bodyDiv.append(sig, quote);
+    setText(bodyDiv, `${authoredText}\n\nJane Doe\njane@example.com\n(415) 555-0132\n\n${quotedText}`);
+    dialog.appendChild(bodyDiv);
+    const sendBtn = document.createElement('div');
+    sendBtn.setAttribute('role', 'button');
+    sendBtn.setAttribute('aria-label', 'Send');
+    dialog.appendChild(sendBtn);
+    document.body.appendChild(dialog);
+    content.registerCompose(gmailAdapter, dialog);
+    return { dialog, bodyDiv };
+  }
+
+  function pressCtrlEnter(target) {
+    const event = new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true, cancelable: true });
+    target.dispatchEvent(event);
+    return event;
+  }
+
+  test('a reply whose only contact details are in the signature and quote is not blocked', async () => {
+    await loadDefaultSettings();
+    const { bodyDiv } = buildGmailReply('Sounds good!', 'On Mon, Bob <bob@example.com> wrote:\nLunch?');
+
+    expect(pressCtrlEnter(bodyDiv).defaultPrevented).toBe(false);
+    expect(document.querySelector('.pii-guard-overlay')).toBeNull();
+  });
+
+  test('a forwarded SSN in the quoted part is still blocked', async () => {
+    await loadDefaultSettings();
+    const { bodyDiv } = buildGmailReply('FYI', '---------- Forwarded message ---------\nSSN 219-09-9999');
+
+    expect(pressCtrlEnter(bodyDiv).defaultPrevented).toBe(true);
+    expect(document.querySelector('.pii-guard-overlay').textContent).toContain('Social Security Numbers');
+  });
+
+  test('the live count and the send check agree on what to flag', async () => {
+    await loadDefaultSettings();
+    const { dialog, bodyDiv } = buildGmailReply(
+      'Reach carol@example.com',
+      'On Mon, Bob <bob@example.com> wrote:\nSSN 219-09-9999'
+    );
+
+    content.scheduleLiveScan(bodyDiv, gmailAdapter, dialog);
+    jest.advanceTimersByTime(400);
+    const liveCount = global.chrome.runtime.sendMessage.mock.calls
+      .map(([msg]) => msg)
+      .filter((msg) => msg.type === 'PII_TAB_STATUS')
+      .pop().count;
+
+    const findings = content.getBlockingFindings(gmailAdapter, dialog);
+    expect(findings.map((f) => f.ruleId).sort()).toEqual(['email', 'ssn']);
+    expect(liveCount).toBe(findings.length);
   });
 });

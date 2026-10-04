@@ -1,4 +1,4 @@
-const { findByAccessibleName, getElementText, isInside, getTypedRecipients } = require('./adapterUtils');
+const { findByAccessibleName, isInside, getTypedRecipients, splitBodyText } = require('./adapterUtils');
 const { SEND_LABEL_PREFIXES } = require('./localeLabels');
 
 /**
@@ -56,13 +56,24 @@ function isSendShortcut(event) {
   return event.key === 'Enter' && (event.ctrlKey || event.metaKey);
 }
 
-/** Concatenates subject + body text for a compose container so both get scanned. */
-function getComposeText(container) {
+/**
+ * Quoted earlier messages (replies and forwards) and the signature. These
+ * class names are part of the mail HTML Gmail sends, so they're steadier than
+ * its UI classes, but are still best-effort: if they change, the text is
+ * simply scanned as if the user had written it.
+ */
+const QUOTED_SELECTOR = '.gmail_quote, .gmail_signature, [data-smartmail="gmail_signature"]';
+
+/**
+ * Returns the draft's text split into what the user wrote (subject + body)
+ * and what's quoted or signature, so the scanner can treat them differently.
+ */
+function getComposeParts(container) {
   const subjectEl = container.querySelector(SUBJECT_SELECTOR);
   const bodyEl = container.querySelector(BODY_SELECTOR);
   const subject = subjectEl ? subjectEl.value || '' : '';
-  const body = getElementText(bodyEl);
-  return `${subject}\n${body}`;
+  const { authored, quoted } = splitBodyText(bodyEl, QUOTED_SELECTOR);
+  return { authored: `${subject}\n${authored}`, quoted };
 }
 
 module.exports = {
@@ -71,7 +82,7 @@ module.exports = {
   findComposeBodies,
   findComposeContainer,
   findSendButton,
-  getComposeText,
+  getComposeParts,
   getRecipients,
   isSendShortcut,
 };

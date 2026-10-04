@@ -1,9 +1,9 @@
 const {
   findByAccessibleName,
-  getElementText,
   extractEmailsFromText,
   isInside,
   getTypedRecipients,
+  splitBodyText,
 } = require('./adapterUtils');
 const {
   SEND_LABEL_PREFIXES,
@@ -68,12 +68,24 @@ function isSendShortcut(event) {
   return event.altKey && event.code === 'KeyS';
 }
 
-function getComposeText(container) {
+/**
+ * Quoted earlier messages and the signature. Outlook inserts an empty
+ * #appendonsend marker before the reply/forward header and quoted message,
+ * so everything after it is quoted. Best-effort: if these change, the text is
+ * simply scanned as if the user had written it.
+ */
+const QUOTED_SELECTOR = '#appendonsend ~ *, #divRplyFwdMsg, #mail-editor-reference-message-container, [id="Signature"]';
+
+/**
+ * Returns the draft's text split into what the user wrote (subject + body)
+ * and what's quoted or signature, so the scanner can treat them differently.
+ */
+function getComposeParts(container) {
   const subjectEl = container.querySelector(SUBJECT_SELECTOR);
   const bodyEl = container.querySelector(BODY_SELECTOR);
   const subject = subjectEl ? subjectEl.value || '' : '';
-  const body = getElementText(bodyEl);
-  return `${subject}\n${body}`;
+  const { authored, quoted } = splitBodyText(bodyEl, QUOTED_SELECTOR);
+  return { authored: `${subject}\n${authored}`, quoted };
 }
 
 module.exports = {
@@ -82,7 +94,7 @@ module.exports = {
   findComposeBodies,
   findComposeContainer,
   findSendButton,
-  getComposeText,
+  getComposeParts,
   getRecipients,
   isSendShortcut,
 };

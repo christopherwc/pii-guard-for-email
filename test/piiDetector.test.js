@@ -56,6 +56,25 @@ describe('scanText', () => {
     expect(scanText('token ghp_' + 'a'.repeat(36)).findings.some((f) => f.ruleId === 'apiKey')).toBe(true);
   });
 
+  test('detects passport numbers after a "passport" label', () => {
+    const passportMatches = (text) => scanText(text).findings
+      .filter((f) => f.ruleId === 'passport')
+      .map((f) => f.match);
+
+    expect(passportMatches('passport no: X12345678')).toEqual(['passport no: X12345678']);
+    expect(passportMatches('Passport # 123456789')).toEqual(['Passport # 123456789']);
+    expect(passportMatches('passport number 987654321')).toEqual(['passport number 987654321']);
+  });
+
+  test('does not flag ordinary words after "passport" as a passport number', () => {
+    const hasPassport = (text) => scanText(text).findings.some((f) => f.ruleId === 'passport');
+
+    expect(hasPassport('my passport number is below')).toBe(false);
+    expect(hasPassport('Please send your passport numbers')).toBe(false);
+    expect(hasPassport('passport photos are attached')).toBe(false);
+    expect(hasPassport('passport expires next spring')).toBe(false);
+  });
+
   test('detects bank account/routing number mentions', () => {
     expect(scanText('routing number: 123456789').findings.some((f) => f.ruleId === 'bankAccount')).toBe(true);
   });

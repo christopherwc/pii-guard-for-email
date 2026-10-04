@@ -76,7 +76,10 @@ const RULES = [
     id: 'passport',
     label: 'US Passport numbers',
     severity: 'medium',
-    pattern: /\bpassport\s*(?:#|number|no\.?)?\s*[:-]?\s*[A-Z0-9]{6,9}\b/gi,
+    // The number must contain a digit (US numbers are 9 digits, or a letter
+    // + 8 digits); otherwise words like "number" in "my passport number is
+    // below" would be taken for the ID itself.
+    pattern: /\bpassport\s*(?:#|number|no\.?)?\s*[:-]?\s*(?=[A-Z]{0,8}\d)[A-Z0-9]{6,9}\b/gi,
   },
   {
     id: 'dob',
